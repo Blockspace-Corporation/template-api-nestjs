@@ -22,6 +22,7 @@ async function seedDefaultUser(app) {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableCors();
 
   const config = new DocumentBuilder()
     .setTitle('Template API NestJS')

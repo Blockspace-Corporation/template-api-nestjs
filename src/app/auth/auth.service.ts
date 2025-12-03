@@ -15,7 +15,7 @@ export class AuthService {
     private usersService: UsersService
   ) { }
 
-  async signIn(loginDto: LoginDto): Promise<{ access_token: string }> {
+  async login(loginDto: LoginDto): Promise<{ access_token: string }> {
     const user = await this.usersService.findOneByUsername(loginDto.username);
     if (!user) {
       throw new UnauthorizedException('Invalid username or password');
