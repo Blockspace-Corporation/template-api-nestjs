@@ -1,0 +1,12 @@
+services:
+  app:
+    image: blockspacecorp/template-api-nestjs:latest
+    container_name: template-api-nestjs
+    env_file:
+     - .env
+    ports:
+     - 3000:3000
+    volumes:
+     - /var/www/html/template-api-nestjs/.env:/usr/src/app/.env
+     - /var/www/html/template-api-nestjs/uploads:/usr/src/app/uploads
+  

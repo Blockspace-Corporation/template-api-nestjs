@@ -1,0 +1,83 @@
+name: production_deployment
+
+# Workflow is automatically triggered when a tag matching the pattern 'v**-production' is pushed
+# Example tags: v1.0.0-production, v2.1.5-production, etc.
+on:
+  push:
+    tags:
+      - v**-production
+
+jobs:
+  build_and_deploy:
+    # GitHub-hosted runner environment using Ubuntu 22.04 with Docker pre-installed
+    runs-on: ubuntu-22.04
+
+    steps:
+      # STEP 1: SOURCE CODE CHECKOUT
+      #
+      # Clones the repository code to the GitHub Actions runner's workspace
+      # Makes the application source code (including Dockerfile) available
+      # for subsequent build and deployment steps
+      # Uses actions/checkout@v2 to fetch the repository at the tagged commit
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      # STEP 2: DOCKER IMAGE BUILD
+      #
+      # Builds a Docker container image from the Dockerfile in the repository
+      # Image naming convention: {DOCKER_HUB_NAMESPACE}/template-api-nestjs:latest
+      # - DOCKER_HUB_NAMESPACE: Retrieved from GitHub repository secrets
+      # - Repository name: template-api-nestjs (hardcoded)
+      # - Tag: latest (indicates the most recent production build)
+      # Dockerfile is located in the repository root directory
+      - name: Build Docker image
+        run: docker build -t ${{ secrets.DOCKER_HUB_NAMESPACE }}/template-api-nestjs:latest .
+
+      # STEP 3: DOCKER IMAGE PUSH TO REGISTRY
+      #
+      # Authenticates with DockerHub and pushes the built image to the registry
+      # Makes the image available for deployment to production servers
+      # Authentication details (username and password) are stored as GitHub secrets
+      # The 'latest' tag overwrites the previous latest image
+      # Credentials are masked in workflow logs for security
+      - name: Push image to DockerHub
+        run: |
+          docker login -u ${{ secrets.DOCKER_HUB_USERNAME }} -p ${{ secrets.DOCKER_HUB_PASSWORD }}
+          docker push ${{ secrets.DOCKER_HUB_NAMESPACE }}/template-api-nestjs:latest
+
+      # STEP 4: REMOTE DEPLOYMENT VIA SSH
+      # Connects to the production server and deploys the application
+      #
+      # Sub-step 1: Creates SSH directory structure
+      #   - Creates ~/.ssh directory to store SSH authentication keys
+      #
+      # Sub-step 2: Writes SSH private key
+      #   - Retrieves the private key from GitHub secrets (PRODUCTION_PRIVATE_KEY)
+      #   - Writes the key to ~/.ssh/ssh-key file
+      #   - The -e flag in echo enables interpretation of escape sequences (e.g., \n for newlines)
+      #
+      # Sub-step 3: Sets proper key permissions
+      #   - Sets file permissions to 400 (read-only for owner)
+      #   - This is a security requirement as SSH rejects keys with incorrect permissions
+      #
+      # Sub-step 4: Establishes SSH connection and executes deployment
+      #   - StrictHostKeyChecking=no: Bypasses SSH host key verification
+      #   - Connects to production server using credentials from secrets:
+      #     * PRODUCTION_USERNAME: SSH username
+      #     * PRODUCTION_HOST: Server IP address or hostname
+      #   - Navigates to the deployment directory (PRODUCTION_PATH)
+      #   - Authenticates with DockerHub on the remote server
+      #   - Executes deploy_production.sh script which typically:
+      #     * Pulls the latest Docker image from DockerHub
+      #     * Stops existing containers
+      #     * Starts new containers with the updated image
+      #     * Performs any necessary cleanup or health checks
+      - name: SSH to Server
+        run: |
+          mkdir ~/.ssh
+          echo -e "${{ secrets.PRODUCTION_PRIVATE_KEY }}" > ~/.ssh/ssh-key
+          chmod 400 ~/.ssh/ssh-key
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/ssh-key ${{ secrets.PRODUCTION_USERNAME }}@${{ secrets.PRODUCTION_HOST }} \
+            'cd ${{ secrets.PRODUCTION_PATH }} && \
+            docker login -u ${{ secrets.DOCKER_HUB_USERNAME }} -p ${{ secrets.DOCKER_HUB_PASSWORD }} && \
+            sh deploy_production.sh'
